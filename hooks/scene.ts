@@ -127,24 +127,23 @@ function stars(fill: number): string {
   return groups.map((g, i) => `<g class="${i === 0 ? '' : 'tw' + i}">${g}</g>`).join('')
 }
 
-// 月は右上の隅に固定した入れ子の svg に描くので、縦長の画面でも切れない。
+// 画面は右下を基準に切り抜かれる (xMaxYMax slice)。横長の画面では空の上側が、
+// 縦長の画面では左側が切れるので、月は右寄りの低めに置いて 21:9 でも欠けないようにする。
 // 影の側は空と同じ色の円で星だけを隠し、その上に光の輪を重ねるので輪郭は見えない。
 function moon(fill: number, sky: string): string {
-  const cx = 285
-  const cy = 105
-  const r = 24
+  const cx = 1340
+  const cy = 300
+  const r = 52
   const lit = 0.05 + 0.95 * fill
   const rx = r * Math.abs(1 - 2 * lit)
   const sweep = lit < 0.5 ? 0 : 1
+  // 光の輪の中心は、欠けているあいだは光っている縁の側へ寄せる。
+  const glow = r * 0.75 * (1 - fill)
   const shape = `M${cx},${cy - r}A${r},${r} 0 0 1 ${cx},${cy + r}A${n(rx)},${r} 0 0 ${sweep} ${cx},${cy - r}Z`
 
-  return `<svg width="100%" height="100%" viewBox="0 0 400 400" preserveAspectRatio="xMaxYMin meet" style="overflow:visible">
-<circle cx="${cx}" cy="${cy}" r="${r - 0.4}" fill="${sky}"/>
-<circle cx="${cx}" cy="${cy}" r="${n(60 + 200 * fill)}" fill="url(#halo)" opacity="${(0.12 + 0.5 * fill).toFixed(2)}"/>
-<g transform="rotate(-24 ${cx} ${cy})">
-<path d="${shape}" fill="#f4f1e4"/>
-</g>
-</svg>`
+  return `<circle cx="${cx}" cy="${cy}" r="${r - 1}" fill="${sky}"/>
+<circle cx="${n(cx + glow * 0.914)}" cy="${n(cy - glow * 0.407)}" r="${n(135 + 450 * fill)}" fill="url(#halo)" opacity="${(0.12 + 0.5 * fill).toFixed(2)}"/>
+<path d="${shape}" fill="#f4f1e4" transform="rotate(-24 ${cx} ${cy})"/>`
 }
 
 // 流れ星は描くたびに位置、向き、間隔を乱数で決め直す。
@@ -155,7 +154,7 @@ function meteors(): { css: string; body: string } {
 
   for (let i = 0; i < 6; i++) {
     const x = 120 + Math.random() * 1360
-    const y = 40 + Math.random() * 400
+    const y = 170 + Math.random() * 300
     // 0 度が右向き、90 度が真下。-20〜200 度を 6 等分して 1 本ずつ割り当て、向きが偏らないようにする。
     const angle = -20 + (i + Math.random()) * (220 / 6)
     const travel = 180 + Math.random() * 220
@@ -184,7 +183,7 @@ export function scene(fill: number): string {
   const trees = mix('#050912', '#080e1d', f)
   const shooting = meteors()
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMaxYMax slice">
 <style>
 .tw1{animation:tw 7s ease-in-out infinite}
 .tw2{animation:tw 9s ease-in-out -3s infinite}
@@ -206,7 +205,7 @@ ${shooting.css}@keyframes tw{0%,100%{opacity:1}50%{opacity:.55}}
 <g fill="#eef2ff">${stars(f)}</g>
 <g fill="url(#trail)" opacity="${(1 - 0.5 * f).toFixed(2)}">
 ${shooting.body}</g>
-${moon(f, mix(skyTop, skyLow, 0.26))}
+${moon(f, mix(skyTop, skyLow, 0.33))}
 <path d="${FAR}" fill="url(#far)"/>
 <path d="${MID}" fill="${mid}"/>
 <path d="${NEAR}" fill="${near}"/>
