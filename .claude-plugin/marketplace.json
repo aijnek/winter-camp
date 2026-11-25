@@ -1,0 +1,6 @@
+{
+  "name": "aijnek-winter-camp",
+  "owner": { "name": "AIjnek" },
+  "metadata": { "description": "冬の夜のキャンプ場の背景 mod。" },
+  "plugins": [{ "name": "winter-camp", "source": "./" }]
+}
