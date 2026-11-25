@@ -1,6 +1,10 @@
 // 冬の夜のキャンプ場を 1 枚の SVG として組み立てる。
 // fill は context 利用率 (0〜1) で、月の満ち欠けと月明かりの強さを決める。
 
+// 原画は 4:1 の横長で、x は X0 (左端) から W (右端) まで。画面には右下を基準に
+// 高さを合わせて収める (xMaxYMax slice) ので、4:1 より縦長の画面では高さがすべて見え、
+// 左側だけが切れる。テントと月は右端から 450 以内に置き、縦長の画面でも残るようにする。
+const X0 = -2000
 const W = 1600
 const H = 900
 
@@ -35,9 +39,9 @@ function tri(x: number): number {
 function ridge(seed: number, base: number, amp: number, period: number): string {
   const rand = mulberry32(seed)
   const p = [rand(), rand(), rand()]
-  let d = `M0,${H}`
+  let d = `M${X0},${H}`
 
-  for (let x = 0; x <= W; x += 16) {
+  for (let x = X0; x <= W; x += 16) {
     const y =
       base -
       amp * (0.55 * tri(x / period + p[0]!) + 0.3 * tri(x / (period * 0.43) + p[1]!) + 0.15 * tri(x / (period * 0.17) + p[2]!)) -
@@ -75,19 +79,44 @@ const PINES = (() => {
     d += pine(side, 800 + rand() * 60, 70 + rand() * 120)
   }
 
+  // 横長の画面でだけ見える左側にも、まばらに木を置く。
+  for (let i = 0; i < 30; i++) {
+    d += pine(X0 + rand() * (-X0 - 80), 800 + rand() * 60, 60 + rand() * 110)
+  }
+
   return d
 })()
 
-type Star = { x: number; y: number; r: number; b: number; group: number }
+// 星は明るさ 8 段階 × またたきの 4 組に分け、組ごとに 1 本の path で点を打つ。
+// 長さ 0 の線に丸い端を付けると点になるので、1 個ずつ circle を書くより短く済む。
+const LEVELS = 8
+const levelBrightness = (level: number) => 0.18 + (0.82 * (level + 0.5)) / LEVELS
 
-const STARS: Star[] = (() => {
+type Bucket = { dots: string; warm: string; cool: string }
+
+const STARS: Bucket[][] = (() => {
   const rand = mulberry32(99)
-  const stars: Star[] = []
+  const buckets: Bucket[][] = [0, 1, 2, 3].map(() =>
+    Array.from({ length: LEVELS }, () => ({ dots: '', warm: '', cool: '' })),
+  )
+  const put = (x: number, y: number, b: number) => {
+    const level = Math.min(LEVELS - 1, Math.floor(((b - 0.18) / 0.82) * LEVELS))
+    const bucket = buckets[Math.floor(rand() * 4)]![level]!
+    const dot = `M${Math.round(x)} ${Math.round(y)}h0`
+    bucket.dots += dot
+    // 特に明るい星には淡いにじみを付け、青白い星と暖色の星を混ぜる。
+    if (level >= 5) {
+      if (rand() < 0.35) {
+        bucket.warm += dot
+      } else {
+        bucket.cool += dot
+      }
+    }
+  }
 
-  for (let i = 0; i < 800; i++) {
+  for (let i = 0; i < 1800; i++) {
     // 明るい星は少なく、暗い星を多くする。
-    const b = 0.2 + 0.8 * Math.pow(rand(), 2.6)
-    stars.push({ x: rand() * W, y: rand() * 660, r: 0.4 + b * 1.4, b, group: Math.floor(rand() * 4) })
+    put(X0 + rand() * (W - X0), rand() * 660, 0.2 + 0.8 * Math.pow(rand(), 2.6))
   }
 
   // 天の川の帯に沿って暗い星を密に置く。月が満ちると最初に消える。
@@ -98,41 +127,45 @@ const STARS: Star[] = (() => {
     const across = (rand() + rand() + rand() - 1.5) * 110
     const x = 620 + along * cos - across * sin
     const y = 250 + along * sin + across * cos
-    if (x < 0 || x > W || y < 0 || y > 660) {
+    if (x > W || y < 0 || y > 660) {
       continue
     }
-    const b = 0.18 + 0.3 * rand()
-    stars.push({ x, y, r: 0.4 + b, b, group: Math.floor(rand() * 4) })
+    put(x, y, 0.18 + 0.3 * rand())
   }
 
-  return stars
+  return buckets
 })()
 
 function stars(fill: number): string {
-  const groups = ['', '', '', '']
+  return STARS.map((levels, group) => {
+    let body = ''
 
-  for (const s of STARS) {
-    // 月明かりが強いほど全体が沈み、暗い星から見えなくなる。
-    const opacity = Math.min(1, s.b * 1.25) * (1 - 0.45 * fill) - 0.3 * fill
-    if (opacity > 0.04) {
-      // 特に明るい星には淡いにじみを付け、青白い星と暖色の星を混ぜる。
-      if (s.b > 0.72) {
-        const tint = (s.r * 10) % 3 < 1 ? '#ffe2c2' : '#cfe0ff'
-        groups[s.group] += `<circle cx="${n(s.x)}" cy="${n(s.y)}" r="${n(s.r * 3.2)}" fill="${tint}" opacity="${(opacity * 0.16).toFixed(2)}"/>`
+    levels.forEach((bucket, level) => {
+      const b = levelBrightness(level)
+      // 月明かりが強いほど全体が沈み、暗い星から見えなくなる。
+      const opacity = Math.min(1, b * 1.25) * (1 - 0.45 * fill) - 0.3 * fill
+      if (opacity <= 0.04 || bucket.dots === '') {
+        return
       }
-      groups[s.group] += `<circle cx="${n(s.x)}" cy="${n(s.y)}" r="${n(s.r)}" opacity="${opacity.toFixed(2)}"/>`
-    }
-  }
+      const width = 2 * (0.4 + b * 1.4)
+      const glow = (opacity * 0.16).toFixed(2)
+      if (bucket.warm !== '') {
+        body += `<path d="${bucket.warm}" stroke="#ffe2c2" stroke-width="${n(width * 3.2)}" opacity="${glow}"/>`
+      }
+      if (bucket.cool !== '') {
+        body += `<path d="${bucket.cool}" stroke="#cfe0ff" stroke-width="${n(width * 3.2)}" opacity="${glow}"/>`
+      }
+      body += `<path d="${bucket.dots}" stroke-width="${n(width)}" opacity="${opacity.toFixed(2)}"/>`
+    })
 
-  return groups.map((g, i) => `<g class="${i === 0 ? '' : 'tw' + i}">${g}</g>`).join('')
+    return `<g class="${group === 0 ? '' : 'tw' + group}">${body}</g>`
+  }).join('')
 }
 
-// 画面は右下を基準に切り抜かれる (xMaxYMax slice)。横長の画面では空の上側が、
-// 縦長の画面では左側が切れるので、月は右寄りの低めに置いて 21:9 でも欠けないようにする。
 // 影の側は空と同じ色の円で星だけを隠し、その上に光の輪を重ねるので輪郭は見えない。
 function moon(fill: number, sky: string): string {
   const cx = 1340
-  const cy = 300
+  const cy = 215
   const r = 52
   const lit = 0.05 + 0.95 * fill
   const rx = r * Math.abs(1 - 2 * lit)
@@ -154,7 +187,7 @@ function meteors(): { css: string; body: string } {
 
   for (let i = 0; i < 6; i++) {
     const x = 120 + Math.random() * 1360
-    const y = 170 + Math.random() * 300
+    const y = 60 + Math.random() * 380
     // 0 度が右向き、90 度が真下。-20〜200 度を 6 等分して 1 本ずつ割り当て、向きが偏らないようにする。
     const angle = -20 + (i + Math.random()) * (220 / 6)
     const travel = 180 + Math.random() * 220
@@ -183,7 +216,7 @@ export function scene(fill: number): string {
   const trees = mix('#050912', '#080e1d', f)
   const shooting = meteors()
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMaxYMax slice">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${X0} 0 ${W - X0} ${H}" preserveAspectRatio="xMaxYMax slice">
 <style>
 .tw1{animation:tw 7s ease-in-out infinite}
 .tw2{animation:tw 9s ease-in-out -3s infinite}
@@ -200,17 +233,17 @@ ${shooting.css}@keyframes tw{0%,100%{opacity:1}50%{opacity:.55}}
 <radialGradient id="milky"><stop offset="0" stop-color="#aebdf0"/><stop offset="1" stop-color="#aebdf0" stop-opacity="0"/></radialGradient>
 <radialGradient id="warm"><stop offset="0" stop-color="#ffc56e" stop-opacity=".8"/><stop offset="1" stop-color="#ffc56e" stop-opacity="0"/></radialGradient>
 </defs>
-<rect width="${W}" height="${H}" fill="url(#sky)"/>
+<rect x="${X0}" width="${W - X0}" height="${H}" fill="url(#sky)"/>
 <ellipse cx="620" cy="250" rx="900" ry="150" transform="rotate(-28 620 250)" fill="url(#milky)" opacity="${(0.26 * (1 - f)).toFixed(3)}"/>
-<g fill="#eef2ff">${stars(f)}</g>
+<g fill="none" stroke="#eef2ff" stroke-linecap="round">${stars(f)}</g>
 <g fill="url(#trail)" opacity="${(1 - 0.5 * f).toFixed(2)}">
 ${shooting.body}</g>
-${moon(f, mix(skyTop, skyLow, 0.33))}
+${moon(f, mix(skyTop, skyLow, 0.24))}
 <path d="${FAR}" fill="url(#far)"/>
 <path d="${MID}" fill="${mid}"/>
 <path d="${NEAR}" fill="${near}"/>
-<rect y="820" width="${W}" height="80" fill="${snow}"/>
-<path d="M0,830Q400,800 800,824T${W},812V${H}H0Z" fill="${snow}"/>
+<rect x="${X0}" y="820" width="${W - X0}" height="80" fill="${snow}"/>
+<path d="M${X0},826Q-1600,806 -1200,824T-400,818T0,830Q400,800 800,824T${W},812V${H}H${X0}Z" fill="${snow}"/>
 <path d="${PINES}" fill="${trees}"/>
 <g transform="translate(1290 792)">
 <ellipse class="lamp" cx="0" cy="26" rx="120" ry="34" fill="url(#warm)" opacity=".9"/>
