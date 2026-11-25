@@ -27,7 +27,7 @@ const { theme, problems } = makeColors({
 
 const LOOK: ThemeSetArgs = {
   colors: theme,
-  backdrop: { scene: 'winter-camp', glass: { blur: 8, tint: '#0b1020', opacity: 0.45 } },
+  backdrop: { scene: 'winter-camp', glass: { blur: 3, tint: '#0b1020', opacity: 0.25 } },
 }
 
 export const register: Register = on => {

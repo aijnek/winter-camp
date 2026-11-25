@@ -1,6 +1,6 @@
 {
   "name": "winter-camp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "冬の晴れた夜のキャンプ場の風景。context 利用率に応じて月が満ち、月明かりで星が見えにくくなる。",
   "author": { "name": "AIjnek" },
   "license": "MIT",
